@@ -3,6 +3,21 @@ name: Unified-Reusable-Workflow CI/CD
 on:
   workflow_call:
     inputs:
+      run-terraform:
+        description: 'Run Terraform job'
+        required: false
+        default: true
+        type: boolean
+      run-python:
+        description: 'Run Python job'
+        required: false
+        default: true
+        type: boolean
+      run-shell:
+        description: 'Run Shell job'
+        required: false
+        default: true
+        type: boolean
       terraform-dir:
         description: 'Directory containing Terraform configuration'
         required: false
@@ -18,42 +33,72 @@ on:
         required: false
         default: './terraform/shell-scripts/validate.sh'
         type: string
+      terraform-action:
+        description: 'Terraform action to perform (plan, apply, destroy)'
+        required: false
+        default: 'apply'
+        type: string
     secrets:
-        AWS_ACCESS_KEY_ID:
-            description: 'AWS Access Key ID'
-            required: true
-        AWS_SECRET_ACCESS_KEY:
-            description: 'AWS Secret Access Key'
-            required: true
+      AWS_ACCESS_KEY_ID:
+        description: 'AWS Access Key ID'
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        description: 'AWS Secret Access Key'
+        required: false
+      AWS_SESSION_TOKEN:
+        description: 'AWS Session Token (for temporary credentials)'
+        required: false
+
 jobs:
   terraform:
+    if: ${{ inputs.run-terraform }}
     name: Terraform
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
+        working-directory: ${{ inputs.terraform-dir }}
     steps:
       - uses: actions/checkout@v4
+      
       - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.5.0
+      
       - name: Terraform Format Check
         run: terraform fmt -check
+      
       - name: Terraform Init
         run: terraform init
+      
       - name: Terraform Validate
         run: terraform validate
+      
       - name: Terraform Plan
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: terraform plan -input=false
+      
       - name: Terraform Apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: ${{ inputs.terraform-action == 'apply' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: terraform apply -auto-approve -input=false
+      
+      - name: Terraform Destroy
+        if: ${{ inputs.terraform-action == 'destroy' && github.event_name == 'workflow_dispatch' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: terraform destroy -auto-approve -input=false
 
   python:
+    if: ${{ inputs.run-python }}
     name: Python Lint and Test
     runs-on: ubuntu-latest
     defaults:
@@ -61,34 +106,39 @@ jobs:
         working-directory: ${{ inputs.python-dir }}
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      
       - name: Install dependencies
         run: |
           python -m venv .venv
           . .venv/bin/activate
           pip install -r requirements.txt
-      - name : Check code formatting
+      
+      - name: Check code formatting
         run: |
           . .venv/bin/activate
           black --check . || true  # (Add black to requirements.txt)
+      
       - name: Lint Python code
         run: |
           . .venv/bin/activate
           flake8 . || true  # (Add flake8 to requirements.txt)
+      
       - name: Run unit tests
         run: |
           . .venv/bin/activate
           pytest
 
   shell:
+    if: ${{ inputs.run-shell }}
     name: Shell Script Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Run custom shell script
         run: bash ${{ inputs.shell-script }}
-
-  # Add additional jobs (e.g., nodejs, yaml-lint, docker build) as needed.

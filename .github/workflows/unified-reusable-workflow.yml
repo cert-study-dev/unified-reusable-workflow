@@ -31,7 +31,7 @@ on:
       shell-script:
         description: 'Path to shell script to execute'
         required: false
-        default: './terraform/shell-scripts/validate.sh'
+        default: './shell-scripts/'
         type: string
       terraform-action:
         description: 'Terraform action to perform (plan, apply, destroy)'

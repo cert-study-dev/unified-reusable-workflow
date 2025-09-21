@@ -1,6 +1,11 @@
 name: "PR-Validator"
 
 on:
+  workflow_call:
+    secrets:
+      GITHUB_TOKEN:
+        description: 'GitHub token to authenticate API requests'
+        required: true
   pull_request_target:
     types:
       - opened
